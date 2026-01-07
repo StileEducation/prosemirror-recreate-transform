@@ -9,11 +9,11 @@ const IN_WATCH_MODE = process.argv.some(arg => arg === "--watch" || arg === "-w"
 
 const config = {
 
-    entry: glob.sync("./test/**/*.test.ts"),
+    entry: glob.sync("./test/**/*.test.ts").map(f => f.startsWith('./') ? f : `./${f}`),
 
     mode: "development",
     context: ROOT,
-    target: "web",
+    target: "node",
     devtool: "source-map",
     output: {
         filename: "[name].js",

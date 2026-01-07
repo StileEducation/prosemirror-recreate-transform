@@ -4,23 +4,23 @@ export default {
     create() {
         return new Schema({
             nodes: this.nodes,
-            marks: this.marks
+            marks: this.marks,
         });
     },
     marks: {},
     nodes: {
         doc: {
-            content: "(block)+"
+            content: "(block)+",
         },
         text: {
-            group: "inline"
+            group: "inline",
         },
         paragraph: {
             content: "text*",
             group: "block",
             draggable: false,
             parseDOM: [{ tag: "p" }],
-            toDOM: () => ["p", 0]
+            toDOM: () => ["p", 0],
         },
         widget_a: {
             content: "text*",
@@ -30,8 +30,8 @@ export default {
             defining: true,
             attrs: {
                 first: { default: "" },
-                aSecond: { default: "" }
-            }
+                aSecond: { default: "" },
+            },
         },
         widget_b: {
             content: "text*",
@@ -42,8 +42,8 @@ export default {
             attrs: {
                 first: { default: "" },
                 bSecond: { default: "" },
-                third: { default: "" }
-            }
-        }
-    }
+                third: { default: "" },
+            },
+        },
+    },
 };

@@ -1,6 +1,5 @@
 import { AnyObject } from "./types";
 
-
 /**
  * get target value from json-pointer (e.g. /content/0/content)
  * @param  {AnyObject} obj  object to resolve path into

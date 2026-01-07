@@ -9,16 +9,13 @@ import { removeMarks } from "./removeMarks";
 import { getFromPath } from "./getFromPath";
 import { copy } from "./copy";
 
-
 export interface Options {
     complexSteps?: boolean;
     wordDiffs?: boolean;
     simplifyDiff?: boolean;
 }
 
-
 // const logStyle = "color: #fff; background: #333; padding: 2px;";
-
 
 export class RecreateTransform {
     fromDoc: Node;
@@ -39,7 +36,7 @@ export class RecreateTransform {
             complexSteps: true,
             wordDiffs: false,
             simplifyDiff: true,
-            ...options
+            ...options,
         };
 
         this.fromDoc = fromDoc;
@@ -61,7 +58,6 @@ export class RecreateTransform {
             this.ops = createPatch(this.currentJSON, this.finalJSON);
             this.recreateChangeContentSteps();
             this.recreateChangeMarkSteps();
-
         } else {
             // We don't differentiate between mark changes and other changes.
             this.currentJSON = this.fromDoc.toJSON();
@@ -99,32 +95,38 @@ export class RecreateTransform {
                 try {
                     toDoc = this.schema.nodeFromJSON(afterStepJSON);
                     toDoc.check();
-
                 } catch (error) {
                     toDoc = null;
                     if (this.ops.length > 0) {
                         op = this.ops.shift();
                         ops.push(op);
-
                     } else {
-                        throw new Error(`No valid diff possible applying ${op.path}`);
+                        throw new Error(
+                            `No valid diff possible applying ${op.path}`,
+                        );
                     }
                 }
             }
 
             // apply operation (ignoring afterStepJSON)
-            if (this.complexSteps && ops.length === 1 && (pathParts.includes("attrs") || pathParts.includes("type"))) {
+            if (
+                this.complexSteps &&
+                ops.length === 1 &&
+                (pathParts.includes("attrs") || pathParts.includes("type"))
+            ) {
                 // Node markup is changing
                 this.addSetNodeMarkup(); // a lost update is ignored
                 ops = [];
                 // console.log("%cop", logStyle, "- update node", ops);
-
-            } else if (ops.length === 1 && op.op === "replace" && pathParts[pathParts.length - 1] === "text") {
+            } else if (
+                ops.length === 1 &&
+                op.op === "replace" &&
+                pathParts[pathParts.length - 1] === "text"
+            ) {
                 // Text is being replaced, we apply text diffing to find the smallest possible diffs.
                 this.addReplaceTextSteps(op, afterStepJSON);
                 ops = [];
                 // console.log("%cop", logStyle, "- replace", ops);
-
             } else if (this.addReplaceStep(toDoc, afterStepJSON)) {
                 // operations have been applied
                 ops = [];
@@ -149,13 +151,22 @@ export class RecreateTransform {
             // @note this completly updates all attributes in one step, by completely replacing node
             const nodeType = fromNode.type === toNode.type ? null : toNode.type;
             try {
-                this.tr.setNodeMarkup(start, nodeType, toNode.attrs, toNode.marks);
+                this.tr.setNodeMarkup(
+                    start,
+                    nodeType,
+                    toNode.attrs,
+                    toNode.marks,
+                );
             } catch (e) {
                 // if nodetypes differ, the updated node-type and contents might not be compatible
                 // with schema and requires a replace
                 if (nodeType && e.message.includes("Invalid content")) {
                     // @todo add test-case for this scenario
-                    this.tr.replaceWith(start, start + fromNode.nodeSize, toNode);
+                    this.tr.replaceWith(
+                        start,
+                        start + fromNode.nodeSize,
+                        toNode,
+                    );
                 } else {
                     throw e;
                 }
@@ -176,23 +187,30 @@ export class RecreateTransform {
                 return true;
             }
 
-            this.tr.doc.nodesBetween(tPos, tPos + tNode.nodeSize, (fNode, fPos) => {
-                if (!fNode.isInline) {
-                    return true;
-                }
-                const from = Math.max(tPos, fPos);
-                const to = Math.min(tPos + tNode.nodeSize, fPos + fNode.nodeSize);
-                fNode.marks.forEach(nodeMark => {
-                    if (!nodeMark.isInSet(tNode.marks)) {
-                        this.tr.removeMark(from, to, nodeMark);
+            this.tr.doc.nodesBetween(
+                tPos,
+                tPos + tNode.nodeSize,
+                (fNode, fPos) => {
+                    if (!fNode.isInline) {
+                        return true;
                     }
-                });
-                tNode.marks.forEach(nodeMark => {
-                    if (!nodeMark.isInSet(fNode.marks)) {
-                        this.tr.addMark(from, to, nodeMark);
-                    }
-                });
-            });
+                    const from = Math.max(tPos, fPos);
+                    const to = Math.min(
+                        tPos + tNode.nodeSize,
+                        fPos + fNode.nodeSize,
+                    );
+                    fNode.marks.forEach((nodeMark) => {
+                        if (!nodeMark.isInSet(tNode.marks)) {
+                            this.tr.removeMark(from, to, nodeMark);
+                        }
+                    });
+                    tNode.marks.forEach((nodeMark) => {
+                        if (!nodeMark.isInSet(fNode.marks)) {
+                            this.tr.addMark(from, to, nodeMark);
+                        }
+                    });
+                },
+            );
         });
     }
 
@@ -206,7 +224,6 @@ export class RecreateTransform {
 
         if (!step) {
             return false;
-
         } else if (!this.tr.maybeStep(step).failed) {
             this.currentJSON = afterStepJSON;
             return true; // @change previously null
@@ -230,9 +247,9 @@ export class RecreateTransform {
         // get text diffs
         const finalText = op.value;
         const currentText = getFromPath(this.currentJSON, op.path);
-        const textDiffs = this.wordDiffs ?
-            diffWordsWithSpace(currentText, finalText) :
-            diffChars(currentText, finalText);
+        const textDiffs = this.wordDiffs
+            ? diffWordsWithSpace(currentText, finalText)
+            : diffChars(currentText, finalText);
 
         let offset = op1Doc.content.findDiffStart(op2Doc.content);
         const marks = op1Doc.resolve(offset + 1).marks();
@@ -241,29 +258,36 @@ export class RecreateTransform {
             const diff = textDiffs.shift();
 
             if (diff.added) {
-                const textNode = this.schema.nodeFromJSON({ type: "text", text: diff.value }).mark(marks);
+                const textNode = this.schema
+                    .nodeFromJSON({ type: "text", text: diff.value })
+                    .mark(marks);
 
                 if (textDiffs.length && textDiffs[0].removed) {
                     const nextDiff = textDiffs.shift();
-                    this.tr.replaceWith(offset, offset + nextDiff.value.length, textNode);
-
+                    this.tr.replaceWith(
+                        offset,
+                        offset + nextDiff.value.length,
+                        textNode,
+                    );
                 } else {
                     this.tr.insert(offset, textNode);
                 }
                 offset += diff.value.length;
-
             } else if (diff.removed) {
-
                 if (textDiffs.length && textDiffs[0].added) {
                     const nextDiff = textDiffs.shift();
-                    const textNode = this.schema.nodeFromJSON({ type: "text", text: nextDiff.value }).mark(marks);
-                    this.tr.replaceWith(offset, offset + diff.value.length, textNode);
+                    const textNode = this.schema
+                        .nodeFromJSON({ type: "text", text: nextDiff.value })
+                        .mark(marks);
+                    this.tr.replaceWith(
+                        offset,
+                        offset + diff.value.length,
+                        textNode,
+                    );
                     offset += nextDiff.value.length;
-
                 } else {
                     this.tr.delete(offset, offset + diff.value.length);
                 }
-
             } else {
                 offset += diff.value.length;
             }
@@ -273,8 +297,11 @@ export class RecreateTransform {
     }
 }
 
-
-export function recreateTransform(fromDoc: Node, toDoc: Node, options: Options = {}): Transform {
+export function recreateTransform(
+    fromDoc: Node,
+    toDoc: Node,
+    options: Options = {},
+): Transform {
     const recreator = new RecreateTransform(fromDoc, toDoc, options);
     return recreator.init();
 }

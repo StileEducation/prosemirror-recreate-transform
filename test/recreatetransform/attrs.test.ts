@@ -6,8 +6,12 @@ function testRecreate(startDoc, endDoc, steps = [], options: Options = {}) {
     // console.log(startDoc.toJSON(), endDoc.toJSON());
     const tr = recreateTransform(startDoc, endDoc, options);
     assert.equal(
-        JSON.stringify(tr.steps.map(step => step.toJSON()), null, 2),
-        JSON.stringify(steps, null, 2)
+        JSON.stringify(
+            tr.steps.map((step) => step.toJSON()),
+            null,
+            2,
+        ),
+        JSON.stringify(steps, null, 2),
     );
 }
 
@@ -28,13 +32,13 @@ describe("recreateTransform - node attrs", () => {
                         content: [
                             {
                                 type: "widget_a",
-                                attrs: { first: "first", aSecond: "" }
-                            }
-                        ]
+                                attrs: { first: "first", aSecond: "" },
+                            },
+                        ],
                     },
-                    structure: true
-                }
-            ]
+                    structure: true,
+                },
+            ],
         );
     });
 
@@ -54,25 +58,32 @@ describe("recreateTransform - node attrs", () => {
                         content: [
                             {
                                 type: "widget_a",
-                                attrs: { first: "first", aSecond: "second" }
-                            }
-                        ]
+                                attrs: { first: "first", aSecond: "second" },
+                            },
+                        ],
                     },
-                    structure: true
-                }
-            ]
+                    structure: true,
+                },
+            ],
         );
     });
 
     it("should update all node attrs, when changing position", () => {
         testRecreate(
-            doc(p(t("Lorem Ipsum")), p(t("Dolor sit")), node("widget_a", { first: "", aSecond: "" })),
-            doc(p(t("Dolor sit")), node("widget_a", { first: "first", aSecond: "second" })),
+            doc(
+                p(t("Lorem Ipsum")),
+                p(t("Dolor sit")),
+                node("widget_a", { first: "", aSecond: "" }),
+            ),
+            doc(
+                p(t("Dolor sit")),
+                node("widget_a", { first: "first", aSecond: "second" }),
+            ),
             [
                 {
                     stepType: "replace",
                     from: 0,
-                    to: 13
+                    to: 13,
                 },
                 {
                     stepType: "replaceAround",
@@ -85,20 +96,26 @@ describe("recreateTransform - node attrs", () => {
                         content: [
                             {
                                 type: "widget_a",
-                                attrs: { first: "first", aSecond: "second" }
-                            }
-                        ]
+                                attrs: { first: "first", aSecond: "second" },
+                            },
+                        ],
                     },
-                    structure: true
-                }
-            ]
+                    structure: true,
+                },
+            ],
         );
     });
 
     it("should update node attrs and type in one change", () => {
         testRecreate(
             doc(node("widget_a", { first: "a-first", aSecond: "a-second" })),
-            doc(node("widget_b", { first: "b-first", bSecond: "b-second", third: "b-third" })),
+            doc(
+                node("widget_b", {
+                    first: "b-first",
+                    bSecond: "b-second",
+                    third: "b-third",
+                }),
+            ),
             [
                 {
                     stepType: "replaceAround",
@@ -111,25 +128,40 @@ describe("recreateTransform - node attrs", () => {
                         content: [
                             {
                                 type: "widget_b",
-                                attrs: { first: "b-first", bSecond: "b-second", third: "b-third" }
-                            }
-                        ]
+                                attrs: {
+                                    first: "b-first",
+                                    bSecond: "b-second",
+                                    third: "b-third",
+                                },
+                            },
+                        ],
                     },
-                    structure: true
-                }
-            ]
+                    structure: true,
+                },
+            ],
         );
     });
 
     it("should update node attrs and type, when changing position", () => {
         testRecreate(
-            doc(p(t("Lorem Ipsum")), p(t("Dolor sit")), node("widget_a", { first: "a-first", aSecond: "a-second" })),
-            doc(p(t("Dolor sit")), node("widget_b", { first: "b-first", bSecond: "b-second", third: "b-third" })),
+            doc(
+                p(t("Lorem Ipsum")),
+                p(t("Dolor sit")),
+                node("widget_a", { first: "a-first", aSecond: "a-second" }),
+            ),
+            doc(
+                p(t("Dolor sit")),
+                node("widget_b", {
+                    first: "b-first",
+                    bSecond: "b-second",
+                    third: "b-third",
+                }),
+            ),
             [
                 {
                     stepType: "replace",
                     from: 0,
-                    to: 13
+                    to: 13,
                 },
                 {
                     stepType: "replaceAround",
@@ -142,13 +174,17 @@ describe("recreateTransform - node attrs", () => {
                         content: [
                             {
                                 type: "widget_b",
-                                attrs: { first: "b-first", bSecond: "b-second", third: "b-third" }
-                            }
-                        ]
+                                attrs: {
+                                    first: "b-first",
+                                    bSecond: "b-second",
+                                    third: "b-third",
+                                },
+                            },
+                        ],
                     },
-                    structure: true
-                }
-            ]
+                    structure: true,
+                },
+            ],
         );
     });
 });

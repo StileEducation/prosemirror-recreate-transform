@@ -3,11 +3,10 @@ import schema from "../support/schema";
 import { AnyObject } from "../../src/types";
 const testSchema = schema.create();
 
-
 export function doc(...content) {
     return Node.fromJSON(testSchema, {
         type: "doc",
-        content
+        content,
     });
 }
 

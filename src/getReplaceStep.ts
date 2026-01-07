@@ -1,8 +1,7 @@
-import { ReplaceStep } from "prosemirror-transform";
+import { ReplaceStep, Step } from "prosemirror-transform";
 import { Node } from "prosemirror-model";
 
-
-export function getReplaceStep(fromDoc: Node, toDoc: Node) {
+export function getReplaceStep(fromDoc: Node, toDoc: Node): Step | false {
     let start = toDoc.content.findDiffStart(fromDoc.content);
     if (start === null) {
         return false;
@@ -15,9 +14,11 @@ export function getReplaceStep(fromDoc: Node, toDoc: Node) {
         // If there is an overlap, there is some freedom of choice in how to calculate the
         // start/end boundary. for an inserted/removed slice. We choose the extreme with
         // the lowest depth value.
-        if (fromDoc.resolve(start - overlap).depth < toDoc.resolve(endA + overlap).depth) {
+        if (
+            fromDoc.resolve(start - overlap).depth <
+            toDoc.resolve(endA + overlap).depth
+        ) {
             start -= overlap;
-
         } else {
             endA += overlap;
             endB += overlap;

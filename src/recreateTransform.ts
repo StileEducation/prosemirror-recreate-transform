@@ -1,13 +1,9 @@
 import { Transform } from "prosemirror-transform";
 import { Node, Schema } from "prosemirror-model";
-import { applyPatch, createPatch, Operation } from "rfc6902";
 import { diffWordsWithSpace, diffChars } from "diff";
-import { AnyObject } from "./types";
 import { getReplaceStep } from "./getReplaceStep";
 import { simplifyTransform } from "./simplifyTransform";
 import { removeMarks } from "./removeMarks";
-import { getFromPath } from "./getFromPath";
-import { copy } from "./copy";
 
 export interface Options {
     complexSteps?: boolean;
@@ -15,7 +11,17 @@ export interface Options {
     simplifyDiff?: boolean;
 }
 
-// const logStyle = "color: #fff; background: #333; padding: 2px;";
+interface DiffResult {
+    type: "text" | "markup" | "structural";
+    start: number;
+    endFrom: number;
+    endTo: number;
+    fromNode: Node | null;
+    toNode: Node | null;
+    textNodeStart: number;
+}
+
+const MAX_ITERATIONS = 1000;
 
 export class RecreateTransform {
     fromDoc: Node;
@@ -25,11 +31,6 @@ export class RecreateTransform {
     simplifyDiff: boolean;
     schema: Schema;
     tr: Transform;
-    /* current working document data, may get updated while recalculating node steps */
-    currentJSON: AnyObject;
-    /* final document as json data */
-    finalJSON: AnyObject;
-    ops: Array<Operation>;
 
     constructor(fromDoc: Node, toDoc: Node, options: Options = {}) {
         const o = {
@@ -41,29 +42,19 @@ export class RecreateTransform {
 
         this.fromDoc = fromDoc;
         this.toDoc = toDoc;
-        this.complexSteps = o.complexSteps; // Whether to return steps other than ReplaceSteps
-        this.wordDiffs = o.wordDiffs; // Whether to make text diffs cover entire words
+        this.complexSteps = o.complexSteps;
+        this.wordDiffs = o.wordDiffs;
         this.simplifyDiff = o.simplifyDiff;
         this.schema = fromDoc.type.schema;
         this.tr = new Transform(fromDoc);
     }
 
-    init() {
+    init(): Transform {
         if (this.complexSteps) {
-            // For First steps: we create versions of the documents without marks as
-            // these will only confuse the diffing mechanism and marks won't cause
-            // any mapping changes anyway.
-            this.currentJSON = removeMarks(this.fromDoc).toJSON();
-            this.finalJSON = removeMarks(this.toDoc).toJSON();
-            this.ops = createPatch(this.currentJSON, this.finalJSON);
-            this.recreateChangeContentSteps();
+            this.recreateStructuralSteps();
             this.recreateChangeMarkSteps();
         } else {
-            // We don't differentiate between mark changes and other changes.
-            this.currentJSON = this.fromDoc.toJSON();
-            this.finalJSON = this.toDoc.toJSON();
-            this.ops = createPatch(this.currentJSON, this.finalJSON);
-            this.recreateChangeContentSteps();
+            this.recreateAllSteps();
         }
 
         if (this.simplifyDiff) {
@@ -73,115 +64,257 @@ export class RecreateTransform {
         return this.tr;
     }
 
-    /** convert json-diff to prosemirror steps */
-    recreateChangeContentSteps() {
-        // First step: find content changing steps.
-        let ops = [];
-        while (this.ops.length) {
-            // get next
-            let op = this.ops.shift();
-            ops.push(op);
+    /**
+     * Iteratively find and apply structural changes (marks stripped).
+     */
+    recreateStructuralSteps(): void {
+        const fromDocNoMarks = removeMarks(this.fromDoc);
+        const toDocNoMarks = removeMarks(this.toDoc);
 
-            let toDoc;
-            const afterStepJSON = copy(this.currentJSON); // working document receiving patches
-            const pathParts = op.path.split("/");
+        let currentDoc = fromDocNoMarks;
+        let iterations = 0;
 
-            // collect operations until we receive a valid document:
-            // apply ops-patches until a valid prosemirror document is retrieved,
-            // then try to create a transformation step or retry with next operation
-            while (toDoc == null) {
-                applyPatch(afterStepJSON, [op]);
+        while (iterations < MAX_ITERATIONS) {
+            const start = toDocNoMarks.content.findDiffStart(currentDoc.content);
+            if (start === null) break;
 
-                try {
-                    toDoc = this.schema.nodeFromJSON(afterStepJSON);
-                    toDoc.check();
-                } catch (error) {
-                    toDoc = null;
-                    if (this.ops.length > 0) {
-                        op = this.ops.shift();
-                        ops.push(op);
-                    } else {
-                        throw new Error(
-                            `No valid diff possible applying ${op.path}`,
-                        );
-                    }
-                }
-            }
+            const diffEnd = toDocNoMarks.content.findDiffEnd(currentDoc.content);
+            if (!diffEnd) break;
 
-            // apply operation (ignoring afterStepJSON)
-            if (
-                this.complexSteps &&
-                ops.length === 1 &&
-                (pathParts.includes("attrs") || pathParts.includes("type"))
-            ) {
-                // Node markup is changing
-                this.addSetNodeMarkup(); // a lost update is ignored
-                ops = [];
-                // console.log("%cop", logStyle, "- update node", ops);
-            } else if (
-                ops.length === 1 &&
-                op.op === "replace" &&
-                pathParts[pathParts.length - 1] === "text"
-            ) {
-                // Text is being replaced, we apply text diffing to find the smallest possible diffs.
-                this.addReplaceTextSteps(op, afterStepJSON);
-                ops = [];
-                // console.log("%cop", logStyle, "- replace", ops);
-            } else if (this.addReplaceStep(toDoc, afterStepJSON)) {
-                // operations have been applied
-                ops = [];
-                // console.log("%cop", logStyle, "- other", ops);
-            }
+            const { a: endTo, b: endFrom } = diffEnd;
+            const diff = this.classifyDiff(currentDoc, toDocNoMarks, start, endFrom, endTo);
+
+            this.applyDiff(diff, currentDoc, toDocNoMarks);
+            currentDoc = removeMarks(this.tr.doc);
+            iterations++;
+        }
+
+        if (iterations >= MAX_ITERATIONS) {
+            throw new Error("Max iterations reached in recreateStructuralSteps");
         }
     }
 
-    /** update node with attrs and marks, may also change type */
-    addSetNodeMarkup() {
-        // first diff in document is supposed to be a node-change (in type and/or attributes)
-        // thus simply find the first change and apply a node change step, then recalculate the diff
-        // after updating the document
-        const fromDoc = this.schema.nodeFromJSON(this.currentJSON);
-        const toDoc = this.schema.nodeFromJSON(this.finalJSON);
-        const start = toDoc.content.findDiffStart(fromDoc.content);
-        // @note start is the same (first) position for current and target document
+    /**
+     * Simple mode: only ReplaceSteps.
+     */
+    recreateAllSteps(): void {
+        let currentDoc = this.fromDoc;
+        let iterations = 0;
+
+        while (iterations < MAX_ITERATIONS) {
+            const step = getReplaceStep(currentDoc, this.toDoc);
+            if (!step) break;
+
+            const result = this.tr.maybeStep(step);
+            if (result.failed) {
+                throw new Error(`ReplaceStep failed: ${result.failed}`);
+            }
+
+            currentDoc = this.tr.doc;
+            iterations++;
+        }
+
+        if (iterations >= MAX_ITERATIONS) {
+            throw new Error("Max iterations reached in recreateAllSteps");
+        }
+    }
+
+    /**
+     * Classify the nature of a diff.
+     */
+    classifyDiff(
+        fromDoc: Node,
+        toDoc: Node,
+        start: number,
+        endFrom: number,
+        endTo: number,
+    ): DiffResult {
         const fromNode = fromDoc.nodeAt(start);
         const toNode = toDoc.nodeAt(start);
 
-        if (start != null) {
-            // @note this completly updates all attributes in one step, by completely replacing node
-            const nodeType = fromNode.type === toNode.type ? null : toNode.type;
-            try {
-                this.tr.setNodeMarkup(
-                    start,
-                    nodeType,
-                    toNode.attrs,
-                    toNode.marks,
-                );
-            } catch (e) {
-                // if nodetypes differ, the updated node-type and contents might not be compatible
-                // with schema and requires a replace
-                if (nodeType && e.message.includes("Invalid content")) {
-                    // @todo add test-case for this scenario
-                    this.tr.replaceWith(
+        // Calculate text node start position
+        let textNodeStart = start;
+        if (fromNode?.isText) {
+            const $pos = fromDoc.resolve(start);
+            textNodeStart = start - $pos.textOffset;
+        }
+
+        // Text change: both are text nodes with same markup AND their parent blocks are equivalent
+        // This ensures we only do character-level diffs within the same logical block
+        if (
+            fromNode?.isText &&
+            toNode?.isText &&
+            fromNode.sameMarkup(toNode)
+        ) {
+            const $fromPos = fromDoc.resolve(start);
+            const $toPos = toDoc.resolve(start);
+
+            // Check if parent blocks have same structure (excluding the text content we're diffing)
+            // If parents are different types or at different depths, it's structural
+            if (
+                $fromPos.depth === $toPos.depth &&
+                $fromPos.parent.type === $toPos.parent.type &&
+                $fromPos.parent.sameMarkup($toPos.parent)
+            ) {
+                // Additional check: if texts are completely different (no shared prefix/suffix),
+                // treat as structural for cleaner diffs
+                const fromText = fromNode.text || "";
+                const toText = toNode.text || "";
+
+                // Find common prefix length
+                let commonPrefix = 0;
+                while (commonPrefix < fromText.length &&
+                       commonPrefix < toText.length &&
+                       fromText[commonPrefix] === toText[commonPrefix]) {
+                    commonPrefix++;
+                }
+
+                // If texts share some content, it's a true text diff
+                if (commonPrefix > 0 || fromText.length === 0 || toText.length === 0) {
+                    return {
+                        type: "text",
                         start,
-                        start + fromNode.nodeSize,
+                        endFrom,
+                        endTo,
+                        fromNode,
                         toNode,
-                    );
-                } else {
-                    throw e;
+                        textNodeStart,
+                    };
                 }
             }
-            this.currentJSON = removeMarks(this.tr.doc).toJSON();
-            // setting the node markup may have invalidated the following ops, so we calculate them again.
-            this.ops = createPatch(this.currentJSON, this.finalJSON);
-            return true;
         }
-        return false;
+
+        // Markup change: non-text nodes, same content, different markup
+        if (
+            fromNode &&
+            toNode &&
+            !fromNode.isText &&
+            !toNode.isText &&
+            fromNode.content.eq(toNode.content) &&
+            !fromNode.sameMarkup(toNode)
+        ) {
+            return {
+                type: "markup",
+                start,
+                endFrom,
+                endTo,
+                fromNode,
+                toNode,
+                textNodeStart,
+            };
+        }
+
+        // Everything else is structural
+        return {
+            type: "structural",
+            start,
+            endFrom,
+            endTo,
+            fromNode,
+            toNode,
+            textNodeStart,
+        };
     }
 
-    recreateChangeMarkSteps() {
-        // Now the documents should be the same, except their marks, so everything should map 1:1.
-        // Second step: Iterate through the toDoc and make sure all marks are the same in tr.doc
+    /**
+     * Apply diff based on type.
+     */
+    applyDiff(diff: DiffResult, fromDoc: Node, toDoc: Node): void {
+        switch (diff.type) {
+            case "text":
+                this.applyTextDiff(diff);
+                break;
+            case "markup":
+                this.applyMarkupDiff(diff);
+                break;
+            case "structural":
+                this.applyStructuralDiff(fromDoc, toDoc);
+                break;
+        }
+    }
+
+    /**
+     * Apply fine-grained text diff.
+     */
+    applyTextDiff(diff: DiffResult): void {
+        const fromText = diff.fromNode!.text || "";
+        const toText = diff.toNode!.text || "";
+
+        const textDiffs = this.wordDiffs
+            ? diffWordsWithSpace(fromText, toText)
+            : diffChars(fromText, toText);
+
+        let offset = diff.textNodeStart;
+        const marks = this.tr.doc.resolve(offset + 1).marks();
+
+        for (let i = 0; i < textDiffs.length; i++) {
+            const textDiff = textDiffs[i];
+
+            if (textDiff.added) {
+                const textNode = this.schema.text(textDiff.value, marks);
+
+                if (i + 1 < textDiffs.length && textDiffs[i + 1].removed) {
+                    const nextDiff = textDiffs[++i];
+                    this.tr.replaceWith(
+                        offset,
+                        offset + nextDiff.value.length,
+                        textNode,
+                    );
+                } else {
+                    this.tr.insert(offset, textNode);
+                }
+                offset += textDiff.value.length;
+            } else if (textDiff.removed) {
+                if (i + 1 < textDiffs.length && textDiffs[i + 1].added) {
+                    const nextDiff = textDiffs[++i];
+                    const textNode = this.schema.text(nextDiff.value, marks);
+                    this.tr.replaceWith(
+                        offset,
+                        offset + textDiff.value.length,
+                        textNode,
+                    );
+                    offset += nextDiff.value.length;
+                } else {
+                    this.tr.delete(offset, offset + textDiff.value.length);
+                }
+            } else {
+                offset += textDiff.value.length;
+            }
+        }
+    }
+
+    /**
+     * Apply markup change (node type or attributes).
+     */
+    applyMarkupDiff(diff: DiffResult): void {
+        const nodeType =
+            diff.fromNode!.type === diff.toNode!.type ? null : diff.toNode!.type;
+
+        this.tr.setNodeMarkup(
+            diff.start,
+            nodeType,
+            diff.toNode!.attrs,
+            diff.toNode!.marks,
+        );
+    }
+
+    /**
+     * Apply structural change using ReplaceStep.
+     */
+    applyStructuralDiff(fromDoc: Node, toDoc: Node): void {
+        const step = getReplaceStep(fromDoc, toDoc);
+        if (step) {
+            const result = this.tr.maybeStep(step);
+            if (result.failed) {
+                throw new Error(`ReplaceStep failed: ${result.failed}`);
+            }
+        }
+    }
+
+    /**
+     * Reconcile marks after structural changes are complete.
+     */
+    recreateChangeMarkSteps(): void {
         this.toDoc.descendants((tNode, tPos) => {
             if (!tNode.isInline) {
                 return true;
@@ -194,16 +327,19 @@ export class RecreateTransform {
                     if (!fNode.isInline) {
                         return true;
                     }
+
                     const from = Math.max(tPos, fPos);
                     const to = Math.min(
                         tPos + tNode.nodeSize,
                         fPos + fNode.nodeSize,
                     );
+
                     fNode.marks.forEach((nodeMark) => {
                         if (!nodeMark.isInSet(tNode.marks)) {
                             this.tr.removeMark(from, to, nodeMark);
                         }
                     });
+
                     tNode.marks.forEach((nodeMark) => {
                         if (!nodeMark.isInSet(fNode.marks)) {
                             this.tr.addMark(from, to, nodeMark);
@@ -212,88 +348,6 @@ export class RecreateTransform {
                 },
             );
         });
-    }
-
-    /**
-     * retrieve and possibly apply replace-step based from doc changes
-     * From http://prosemirror.net/examples/footnote/
-     */
-    addReplaceStep(toDoc: Node, afterStepJSON: AnyObject) {
-        const fromDoc = this.schema.nodeFromJSON(this.currentJSON);
-        const step = getReplaceStep(fromDoc, toDoc);
-
-        if (!step) {
-            return false;
-        } else if (!this.tr.maybeStep(step).failed) {
-            this.currentJSON = afterStepJSON;
-            return true; // @change previously null
-        }
-
-        throw new Error("No valid step found.");
-    }
-
-    /** retrieve and possibly apply text replace-steps based from doc changes */
-    addReplaceTextSteps(op, afterStepJSON) {
-        // We find the position number of the first character in the string
-        const op1 = { ...op, value: "xx" };
-        const op2 = { ...op, value: "yy" };
-        const afterOP1JSON = copy(this.currentJSON);
-        const afterOP2JSON = copy(this.currentJSON);
-        applyPatch(afterOP1JSON, [op1]);
-        applyPatch(afterOP2JSON, [op2]);
-        const op1Doc = this.schema.nodeFromJSON(afterOP1JSON);
-        const op2Doc = this.schema.nodeFromJSON(afterOP2JSON);
-
-        // get text diffs
-        const finalText = op.value;
-        const currentText = getFromPath(this.currentJSON, op.path);
-        const textDiffs = this.wordDiffs
-            ? diffWordsWithSpace(currentText, finalText)
-            : diffChars(currentText, finalText);
-
-        let offset = op1Doc.content.findDiffStart(op2Doc.content);
-        const marks = op1Doc.resolve(offset + 1).marks();
-
-        while (textDiffs.length) {
-            const diff = textDiffs.shift();
-
-            if (diff.added) {
-                const textNode = this.schema
-                    .nodeFromJSON({ type: "text", text: diff.value })
-                    .mark(marks);
-
-                if (textDiffs.length && textDiffs[0].removed) {
-                    const nextDiff = textDiffs.shift();
-                    this.tr.replaceWith(
-                        offset,
-                        offset + nextDiff.value.length,
-                        textNode,
-                    );
-                } else {
-                    this.tr.insert(offset, textNode);
-                }
-                offset += diff.value.length;
-            } else if (diff.removed) {
-                if (textDiffs.length && textDiffs[0].added) {
-                    const nextDiff = textDiffs.shift();
-                    const textNode = this.schema
-                        .nodeFromJSON({ type: "text", text: nextDiff.value })
-                        .mark(marks);
-                    this.tr.replaceWith(
-                        offset,
-                        offset + diff.value.length,
-                        textNode,
-                    );
-                    offset += nextDiff.value.length;
-                } else {
-                    this.tr.delete(offset, offset + diff.value.length);
-                }
-            } else {
-                offset += diff.value.length;
-            }
-        }
-
-        this.currentJSON = afterStepJSON;
     }
 }
 

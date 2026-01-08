@@ -29,8 +29,7 @@
   "dependencies": {
     "diff": "^8.0.2",
     "prosemirror-model": "^1.25.4",
-    "prosemirror-transform": "^1.10.5",
-    "rfc6902": "^5.1.2"
+    "prosemirror-transform": "^1.10.5"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

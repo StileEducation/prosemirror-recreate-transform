@@ -82,25 +82,26 @@ describe("recreateTransform - node attrs", () => {
             [
                 {
                     stepType: "replace",
-                    from: 0,
-                    to: 13,
-                },
-                {
-                    stepType: "replaceAround",
-                    from: 11,
-                    to: 13,
-                    gapFrom: 12,
-                    gapTo: 12,
-                    insert: 1,
+                    from: 1,
+                    to: 26,
                     slice: {
                         content: [
+                            {
+                                type: "paragraph",
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: "Dolor sit",
+                                    },
+                                ],
+                            },
                             {
                                 type: "widget_a",
                                 attrs: { first: "first", aSecond: "second" },
                             },
                         ],
+                        openStart: 1,
                     },
-                    structure: true,
                 },
             ],
         );
@@ -160,18 +161,19 @@ describe("recreateTransform - node attrs", () => {
             [
                 {
                     stepType: "replace",
-                    from: 0,
-                    to: 13,
-                },
-                {
-                    stepType: "replaceAround",
-                    from: 11,
-                    to: 13,
-                    gapFrom: 12,
-                    gapTo: 12,
-                    insert: 1,
+                    from: 1,
+                    to: 26,
                     slice: {
                         content: [
+                            {
+                                type: "paragraph",
+                                content: [
+                                    {
+                                        type: "text",
+                                        text: "Dolor sit",
+                                    },
+                                ],
+                            },
                             {
                                 type: "widget_b",
                                 attrs: {
@@ -181,8 +183,8 @@ describe("recreateTransform - node attrs", () => {
                                 },
                             },
                         ],
+                        openStart: 1,
                     },
-                    structure: true,
                 },
             ],
         );

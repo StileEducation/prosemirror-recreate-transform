@@ -1,2 +1,2 @@
-import { Node } from "prosemirror-model";
+import type { Node } from "prosemirror-model";
 export declare function removeMarks(doc: Node): Node;

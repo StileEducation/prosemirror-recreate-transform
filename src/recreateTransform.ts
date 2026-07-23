@@ -1,5 +1,5 @@
 import { Transform } from "prosemirror-transform";
-import { Node, Schema } from "prosemirror-model";
+import type { Node, Schema } from "prosemirror-model";
 import { diffWordsWithSpace, diffChars } from "diff";
 import { getReplaceStep } from "./getReplaceStep";
 import { simplifyTransform } from "./simplifyTransform";
@@ -11,15 +11,27 @@ export interface Options {
     simplifyDiff?: boolean;
 }
 
-interface DiffResult {
-    type: "text" | "markup" | "structural";
+interface DiffResultBase {
     start: number;
     endFrom: number;
     endTo: number;
-    fromNode: Node | null;
-    toNode: Node | null;
     textNodeStart: number;
 }
+
+/** Text and markup diffs are only classified as such when both nodes exist. */
+interface NodeDiffResult extends DiffResultBase {
+    type: "text" | "markup";
+    fromNode: Node;
+    toNode: Node;
+}
+
+interface StructuralDiffResult extends DiffResultBase {
+    type: "structural";
+    fromNode: Node | null;
+    toNode: Node | null;
+}
+
+type DiffResult = NodeDiffResult | StructuralDiffResult;
 
 const MAX_ITERATIONS = 1000;
 
@@ -236,9 +248,16 @@ export class RecreateTransform {
     /**
      * Apply fine-grained text diff.
      */
-    applyTextDiff(diff: DiffResult): void {
-        const fromText = diff.fromNode!.text || "";
-        const toText = diff.toNode!.text || "";
+    applyTextDiff(diff: NodeDiffResult): void {
+        const fromText = diff.fromNode.text;
+        const toText = diff.toNode.text;
+        if (fromText === undefined || toText === undefined) {
+            // classifyDiff only produces a text diff for text nodes, which
+            // always carry a string.
+            throw new Error(
+                `Non-text node in text diff at position ${diff.start}`,
+            );
+        }
 
         const textDiffs = this.wordDiffs
             ? diffWordsWithSpace(fromText, toText)
@@ -286,15 +305,15 @@ export class RecreateTransform {
     /**
      * Apply markup change (node type or attributes).
      */
-    applyMarkupDiff(diff: DiffResult): void {
+    applyMarkupDiff(diff: NodeDiffResult): void {
         const nodeType =
-            diff.fromNode!.type === diff.toNode!.type ? null : diff.toNode!.type;
+            diff.fromNode.type === diff.toNode.type ? null : diff.toNode.type;
 
         this.tr.setNodeMarkup(
             diff.start,
             nodeType,
-            diff.toNode!.attrs,
-            diff.toNode!.marks,
+            diff.toNode.attrs,
+            diff.toNode.marks,
         );
     }
 

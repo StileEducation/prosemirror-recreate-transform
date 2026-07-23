@@ -1,5 +1,6 @@
-import { ReplaceStep, Step } from "prosemirror-transform";
-import { Node } from "prosemirror-model";
+import { ReplaceStep } from "prosemirror-transform";
+import type { Step } from "prosemirror-transform";
+import type { Node } from "prosemirror-model";
 
 /**
  * Calculate a score for a potential replacement boundary.
@@ -52,8 +53,12 @@ export function getReplaceStep(fromDoc: Node, toDoc: Node): Step | false {
     }
     let start = start$;
 
-    // @ts-ignore property access to content
-    let { a: endA, b: endB } = toDoc.content.findDiffEnd(fromDoc.content);
+    const diffEnd = toDoc.content.findDiffEnd(fromDoc.content);
+    if (diffEnd === null) {
+        // findDiffStart found a difference, so findDiffEnd must find one too.
+        throw new Error("findDiffEnd returned null for differing documents");
+    }
+    let { a: endA, b: endB } = diffEnd;
     const overlap = start - Math.min(endA, endB);
 
     if (overlap > 0) {

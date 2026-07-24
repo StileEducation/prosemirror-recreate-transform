@@ -69,6 +69,9 @@ describe("recreateTransform - node attrs", () => {
     });
 
     it("should update all node attrs, when changing position", () => {
+        // The removed paragraph is deleted as its own step, so the unchanged
+        // "Dolor sit" paragraph and the widget keep their identity and the
+        // attr change stays an attr-only step.
         testRecreate(
             doc(
                 p(t("Lorem Ipsum")),
@@ -143,6 +146,9 @@ describe("recreateTransform - node attrs", () => {
     });
 
     it("should update node attrs and type, when changing position", () => {
+        // The removed paragraph is deleted as its own step, so the unchanged
+        // "Dolor sit" paragraph keeps its identity and the widget change stays
+        // a markup-only step.
         testRecreate(
             doc(
                 p(t("Lorem Ipsum")),

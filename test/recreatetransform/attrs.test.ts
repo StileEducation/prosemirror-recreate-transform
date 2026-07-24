@@ -69,6 +69,9 @@ describe("recreateTransform - node attrs", () => {
     });
 
     it("should update all node attrs, when changing position", () => {
+        // The removed paragraph is deleted as its own step, so the unchanged
+        // "Dolor sit" paragraph and the widget keep their identity and the
+        // attr change stays an attr-only step.
         testRecreate(
             doc(
                 p(t("Lorem Ipsum")),
@@ -82,26 +85,25 @@ describe("recreateTransform - node attrs", () => {
             [
                 {
                     stepType: "replace",
-                    from: 1,
-                    to: 26,
+                    from: 0,
+                    to: 13,
+                },
+                {
+                    stepType: "replaceAround",
+                    from: 11,
+                    to: 13,
+                    gapFrom: 12,
+                    gapTo: 12,
+                    insert: 1,
                     slice: {
                         content: [
-                            {
-                                type: "paragraph",
-                                content: [
-                                    {
-                                        type: "text",
-                                        text: "Dolor sit",
-                                    },
-                                ],
-                            },
                             {
                                 type: "widget_a",
                                 attrs: { first: "first", aSecond: "second" },
                             },
                         ],
-                        openStart: 1,
                     },
+                    structure: true,
                 },
             ],
         );
@@ -144,6 +146,9 @@ describe("recreateTransform - node attrs", () => {
     });
 
     it("should update node attrs and type, when changing position", () => {
+        // The removed paragraph is deleted as its own step, so the unchanged
+        // "Dolor sit" paragraph keeps its identity and the widget change stays
+        // a markup-only step.
         testRecreate(
             doc(
                 p(t("Lorem Ipsum")),
@@ -161,19 +166,18 @@ describe("recreateTransform - node attrs", () => {
             [
                 {
                     stepType: "replace",
-                    from: 1,
-                    to: 26,
+                    from: 0,
+                    to: 13,
+                },
+                {
+                    stepType: "replaceAround",
+                    from: 11,
+                    to: 13,
+                    gapFrom: 12,
+                    gapTo: 12,
+                    insert: 1,
                     slice: {
                         content: [
-                            {
-                                type: "paragraph",
-                                content: [
-                                    {
-                                        type: "text",
-                                        text: "Dolor sit",
-                                    },
-                                ],
-                            },
                             {
                                 type: "widget_b",
                                 attrs: {
@@ -183,8 +187,8 @@ describe("recreateTransform - node attrs", () => {
                                 },
                             },
                         ],
-                        openStart: 1,
                     },
+                    structure: true,
                 },
             ],
         );

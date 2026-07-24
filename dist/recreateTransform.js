@@ -4,7 +4,7 @@ exports.RecreateTransform = void 0;
 exports.recreateTransform = recreateTransform;
 const prosemirror_transform_1 = require("prosemirror-transform");
 const diff_1 = require("diff");
-const getReplaceStep_1 = require("./getReplaceStep");
+const blockAlign_1 = require("./blockAlign");
 const simplifyTransform_1 = require("./simplifyTransform");
 const removeMarks_1 = require("./removeMarks");
 const MAX_ITERATIONS = 1000;
@@ -69,7 +69,7 @@ class RecreateTransform {
         let currentDoc = this.fromDoc;
         let iterations = 0;
         while (iterations < MAX_ITERATIONS) {
-            const step = (0, getReplaceStep_1.getReplaceStep)(currentDoc, this.toDoc);
+            const step = (0, blockAlign_1.getBlockAlignedStep)(currentDoc, this.toDoc);
             if (!step)
                 break;
             const result = this.tr.maybeStep(step);
@@ -232,7 +232,7 @@ class RecreateTransform {
      * Apply structural change using ReplaceStep.
      */
     applyStructuralDiff(fromDoc, toDoc) {
-        const step = (0, getReplaceStep_1.getReplaceStep)(fromDoc, toDoc);
+        const step = (0, blockAlign_1.getBlockAlignedStep)(fromDoc, toDoc);
         if (step) {
             const result = this.tr.maybeStep(step);
             if (result.failed) {

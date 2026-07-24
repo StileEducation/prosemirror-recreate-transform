@@ -1,7 +1,7 @@
 import { Transform } from "prosemirror-transform";
 import type { Node, Schema } from "prosemirror-model";
 import { diffWordsWithSpace, diffChars } from "diff";
-import { getReplaceStep } from "./getReplaceStep";
+import { getBlockAlignedStep } from "./blockAlign";
 import { simplifyTransform } from "./simplifyTransform";
 import { removeMarks } from "./removeMarks";
 
@@ -114,7 +114,7 @@ export class RecreateTransform {
         let iterations = 0;
 
         while (iterations < MAX_ITERATIONS) {
-            const step = getReplaceStep(currentDoc, this.toDoc);
+            const step = getBlockAlignedStep(currentDoc, this.toDoc);
             if (!step) break;
 
             const result = this.tr.maybeStep(step);
@@ -321,7 +321,7 @@ export class RecreateTransform {
      * Apply structural change using ReplaceStep.
      */
     applyStructuralDiff(fromDoc: Node, toDoc: Node): void {
-        const step = getReplaceStep(fromDoc, toDoc);
+        const step = getBlockAlignedStep(fromDoc, toDoc);
         if (step) {
             const result = this.tr.maybeStep(step);
             if (result.failed) {
